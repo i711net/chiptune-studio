@@ -85,6 +85,9 @@
     border-radius:6px;
     font-size:0.85em;
     transition:transform 0.06s ease, box-shadow 0.15s ease;
+    touch-action:manipulation;
+    -webkit-tap-highlight-color:transparent;
+    min-height:38px;
   }
   button:hover{ box-shadow:0 0 10px rgba(255,255,255,0.15); }
   button:active{ transform:translateY(1px) scale(0.97); }
@@ -162,12 +165,20 @@
   .grid-wrap{
     display:flex;
     gap:6px;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    padding-bottom:4px;
   }
   .row-labels{
     display:flex;
     flex-direction:column;
     gap:3px;
     width:36px;
+    flex:0 0 auto;
+    position:sticky;
+    left:0;
+    background:var(--panel);
+    z-index:1;
   }
   .row-label{
     font-size:0.6em;
@@ -179,16 +190,20 @@
     padding-right:4px;
   }
   .grid{
-    flex:1;
+    flex:0 0 auto;
     display:grid;
     grid-template-columns:repeat(16, 1fr);
     gap:3px;
+    min-width:480px;
+    width:100%;
   }
   .cell{
     height:22px;
     background:#0e1130;
     border:1px solid var(--grid);
     border-radius:3px;
+    touch-action:manipulation;
+    -webkit-tap-highlight-color:transparent;
     cursor:pointer;
   }
   .cell:hover{ border-color:var(--dim); }
@@ -210,6 +225,7 @@
     max-width:520px;
     margin:0 auto;
     user-select:none;
+    touch-action:none;
   }
   .white-keys{
     display:flex;
@@ -226,6 +242,7 @@
     color:#333;
     font-size:0.65em;
     padding-bottom:6px;
+    -webkit-tap-highlight-color:transparent;
   }
   .white-key:active, .white-key.pressed{ background:var(--neon-cyan); }
   .black-key{
@@ -243,6 +260,7 @@
     align-items:flex-end;
     justify-content:center;
     padding-bottom:4px;
+    -webkit-tap-highlight-color:transparent;
   }
   .black-key:active, .black-key.pressed{ background:var(--neon-purple); }
   .kb-controls{
@@ -251,6 +269,49 @@
     gap:14px;
     margin-top:12px;
     align-items:center;
+  }
+  .rec-controls{
+    display:flex;
+    justify-content:center;
+    gap:10px;
+    margin-top:10px;
+    align-items:center;
+  }
+  .rec-btn{
+    background:linear-gradient(180deg, var(--neon-pink), #a5195c);
+    border-color:#a5195c;
+    color:#1a0410;
+    font-weight:bold;
+  }
+  .rec-btn:disabled{
+    opacity:0.45;
+    cursor:not-allowed;
+    background:var(--panel2);
+    color:var(--text);
+    border-color:var(--grid);
+  }
+  .rec-indicator{
+    width:11px;
+    height:11px;
+    border-radius:50%;
+    background:#3a3f78;
+    display:inline-block;
+  }
+  .rec-indicator.active{
+    background:#ff2b57;
+    box-shadow:0 0 8px #ff2b57;
+    animation:rec-pulse 1s infinite;
+  }
+  @keyframes rec-pulse{
+    0%{ opacity:1; }
+    50%{ opacity:0.3; }
+    100%{ opacity:1; }
+  }
+  .rec-time{
+    font-size:0.8em;
+    color:var(--dim);
+    min-width:44px;
+    font-variant-numeric:tabular-nums;
   }
   .hint{
     text-align:center;
@@ -263,6 +324,52 @@
     color:var(--dim);
     font-size:0.7em;
     margin-top:10px;
+  }
+  .scroll-hint{
+    display:none;
+    text-align:center;
+    color:var(--dim);
+    font-size:0.65em;
+    margin:-4px 0 8px;
+  }
+
+  /* ---------- 手机端优化 ---------- */
+  @media (max-width: 640px){
+    body{ padding:10px; }
+    h1{ font-size:1.15em; letter-spacing:2px; }
+    .subtitle{ font-size:0.68em; margin-bottom:14px; }
+    .container{ gap:12px; }
+    .panel{ padding:10px 10px; }
+
+    .transport{ gap:8px; }
+    .transport button{ font-size:0.78em; padding:8px 10px; }
+    .bpm-wrap{ flex:1 1 100%; justify-content:space-between; }
+    .bpm-wrap input[type=range]{ flex:1; width:auto; }
+    .loop-wrap{ flex:1 1 auto; }
+    .vol-wrap{ flex:1 1 100%; margin-left:0; justify-content:space-between; }
+    .vol-wrap input[type=range]{ flex:1; }
+
+    .track-head{ gap:6px; }
+    .track-name{ width:auto; margin-right:2px; }
+    .track-head select{ font-size:0.7em; }
+    .track-head button{ font-size:0.68em !important; padding:6px 8px !important; }
+
+    .scroll-hint{ display:block; }
+    .row-labels{ width:30px; }
+    .row-label{ font-size:0.55em; padding-right:3px; }
+    .grid{ min-width:400px; }
+    .cell{ height:26px; }
+
+    .kb-controls{ flex-wrap:wrap; gap:8px; }
+    .rec-controls{ flex-wrap:wrap; }
+    .piano{ height:110px; }
+
+    footer{ font-size:0.62em; padding:0 6px; }
+  }
+
+  @media (max-width: 380px){
+    .grid{ min-width:360px; }
+    h1{ font-size:1em; }
   }
 </style>
 </head>
@@ -295,6 +402,7 @@
 
   <div class="panel">
     <div class="seq-title">音序器 SEQUENCER</div>
+    <div class="scroll-hint">← 左右滑动可查看全部 16 步 →</div>
 
     <div class="track melody-track" id="melodyTrack">
       <div class="track-head">
@@ -341,8 +449,15 @@
       <label class="small">乐器音色</label>
       <select id="kbInstrument"></select>
     </div>
+    <div class="rec-controls">
+      <button id="recordStartBtn" class="rec-btn">⏺ 开始录音</button>
+      <button id="recordStopBtn" class="rec-btn" disabled>⏹ 停止并下载</button>
+      <span class="rec-indicator" id="recordIndicator"></span>
+      <span class="rec-time" id="recordTime">00:00</span>
+    </div>
     <div class="piano" id="piano"></div>
     <div class="hint">键盘按键 A S D F G H J K（白键）/ W E T Y U（黑键）也可以弹奏</div>
+    <div class="hint">录音会把上面音序器播放的音乐和你弹琴的声音混在一起一并录下</div>
   </div>
 
   <footer>用 Web Audio API 合成的方波 / 脉冲波 / 三角波 / 噪音，向 8-bit 游戏机致敬 👾</footer>
@@ -894,6 +1009,110 @@
       liveNote(keyMap[k]);
     }
   });
+
+  // ---------- 录音（把音序器播放 + 现场弹奏一起实时录下来）----------
+  // 原理：masterGain 本来只接到 ctx.destination（喇叭）。录音时额外把它接一路到
+  // 一个 MediaStreamDestination 上，用 MediaRecorder 把这路信号录成文件——
+  // 这样不管声音是音序器播放出来的，还是弹钢琴弹出来的，只要经过 masterGain
+  // 就会被一起录进去，混音顺序和你耳朵听到的完全一致。
+  let mediaRecorder = null;
+  let recordedChunks = [];
+  let recordStreamDest = null;
+  let recordStartTime = 0;
+  let recordTimerInterval = null;
+
+  function pickRecorderMimeType(){
+    const candidates = [
+      'audio/webm;codecs=opus', 'audio/webm',
+      'audio/ogg;codecs=opus', 'audio/ogg', 'audio/mp4'
+    ];
+    for(const type of candidates){
+      if(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(type)){
+        return type;
+      }
+    }
+    return '';
+  }
+
+  function updateRecordUI(recording){
+    document.getElementById('recordStartBtn').disabled = recording;
+    document.getElementById('recordStopBtn').disabled = !recording;
+    document.getElementById('recordIndicator').classList.toggle('active', recording);
+    if(!recording) document.getElementById('recordTime').textContent = '00:00';
+  }
+
+  function updateRecordTimer(){
+    const elapsed = Math.floor((Date.now()-recordStartTime)/1000);
+    const mm = String(Math.floor(elapsed/60)).padStart(2,'0');
+    const ss = String(elapsed%60).padStart(2,'0');
+    document.getElementById('recordTime').textContent = mm+':'+ss;
+  }
+
+  function startRecording(){
+    ensureAudio();
+    if(ctx.state === 'suspended') ctx.resume();
+
+    if(!window.MediaRecorder || typeof ctx.createMediaStreamDestination !== 'function'){
+      alert('你的浏览器不支持录音功能，换成最新版 Chrome / Edge 试试看。');
+      return;
+    }
+
+    recordStreamDest = ctx.createMediaStreamDestination();
+    masterGain.connect(recordStreamDest);
+
+    const mimeType = pickRecorderMimeType();
+    recordedChunks = [];
+    try{
+      mediaRecorder = mimeType
+        ? new MediaRecorder(recordStreamDest.stream, { mimeType })
+        : new MediaRecorder(recordStreamDest.stream);
+    } catch(err){
+      alert('无法启动录音：' + err.message);
+      masterGain.disconnect(recordStreamDest);
+      recordStreamDest = null;
+      return;
+    }
+
+    mediaRecorder.ondataavailable = (e)=>{
+      if(e.data && e.data.size > 0) recordedChunks.push(e.data);
+    };
+    mediaRecorder.onstop = ()=>{
+      if(recordStreamDest){
+        masterGain.disconnect(recordStreamDest);
+        recordStreamDest = null;
+      }
+      if(recordedChunks.length === 0) return;
+      const usedType = mediaRecorder.mimeType || mimeType || 'audio/webm';
+      const blob = new Blob(recordedChunks, { type: usedType });
+      const ext = usedType.includes('ogg') ? 'ogg' : usedType.includes('mp4') ? 'm4a' : 'webm';
+      const stamp = new Date().toISOString().replace(/[:.]/g,'-');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `chiptune-live-${stamp}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(()=> URL.revokeObjectURL(url), 2000);
+    };
+
+    mediaRecorder.start();
+    recordStartTime = Date.now();
+    updateRecordUI(true);
+    recordTimerInterval = setInterval(updateRecordTimer, 200);
+  }
+
+  function stopRecording(){
+    if(mediaRecorder && mediaRecorder.state !== 'inactive'){
+      mediaRecorder.stop();
+    }
+    clearInterval(recordTimerInterval);
+    recordTimerInterval = null;
+    updateRecordUI(false);
+  }
+
+  document.getElementById('recordStartBtn').addEventListener('click', startRecording);
+  document.getElementById('recordStopBtn').addEventListener('click', stopRecording);
 
 })();
 </script>
