@@ -505,7 +505,11 @@
   };
 
   // ---------- 构建网格 UI ----------
-  function buildTrackUI(gridEl, labelsEl, rows, dataArr, colorClass){
+  // 注意：点击格子时必须通过 state[key] 实时取数组，不能在这里把 state.melody 之类的数组
+  // 引用直接捕获进闭包——AI 生成 / 清空会把 state[key] 整体替换成一个新数组，
+  // 如果闭包里存的是旧数组引用，手动点击的格子就会改到一个已经没人再读取的"僵尸数组"上，
+  // 界面看着切换了高亮，但播放时其实读的是新数组，就会出现"手点没反应"的问题。
+  function buildTrackUI(gridEl, labelsEl, rows, key){
     rows.forEach((row, r)=>{
       const lbl = document.createElement('div');
       lbl.className = 'row-label';
@@ -520,6 +524,7 @@
         cell.dataset.row = r;
         cell.dataset.col = c;
         cell.addEventListener('click', ()=>{
+          const dataArr = state[key];
           dataArr[r][c] = !dataArr[r][c];
           cell.classList.toggle('active', dataArr[r][c]);
         });
@@ -528,9 +533,9 @@
     }
   }
 
-  buildTrackUI(document.getElementById('melodyGrid'), document.getElementById('melodyLabels'), MELODY_ROWS, state.melody);
-  buildTrackUI(document.getElementById('bassGrid'), document.getElementById('bassLabels'), BASS_ROWS, state.bass);
-  buildTrackUI(document.getElementById('drumGrid'), document.getElementById('drumLabels'), DRUM_ROWS, state.drum);
+  buildTrackUI(document.getElementById('melodyGrid'), document.getElementById('melodyLabels'), MELODY_ROWS, 'melody');
+  buildTrackUI(document.getElementById('bassGrid'), document.getElementById('bassLabels'), BASS_ROWS, 'bass');
+  buildTrackUI(document.getElementById('drumGrid'), document.getElementById('drumLabels'), DRUM_ROWS, 'drum');
 
   function refreshTrackUI(gridEl, rows, dataArr){
     const cells = gridEl.querySelectorAll('.cell');
