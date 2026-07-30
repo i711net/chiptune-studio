@@ -433,6 +433,7 @@
     <div class="track drum-track" id="drumTrack">
       <div class="track-head">
         <span class="track-name drum">鼓机</span>
+        <select id="drumStyle"></select>
         <button class="ai-btn" data-ai="drum" style="font-size:0.7em;padding:5px 10px;">AI 生成节奏</button>
         <button class="clear-btn" data-clear="drum">清空</button>
       </div>
@@ -472,8 +473,10 @@
     { id:'square',  name:'方波 50%（经典旋律）', type:'custom', duty:0.5 },
     { id:'pulse25', name:'脉冲波 25%',           type:'custom', duty:0.25 },
     { id:'pulse12', name:'脉冲波 12.5%',         type:'custom', duty:0.125 },
+    { id:'pulse75', name:'脉冲波 75%（沙哑）',    type:'custom', duty:0.75 },
     { id:'triangle',name:'三角波（低音/柔和）',   type:'triangle' },
-    { id:'saw',     name:'锯齿波（明亮）',        type:'sawtooth' }
+    { id:'saw',     name:'锯齿波（明亮）',        type:'sawtooth' },
+    { id:'fmbell',  name:'FM 铃声（金属/8-bit音效）', type:'fmbell' }
   ];
 
   function fillInstrumentSelect(sel, defaultId){
@@ -539,6 +542,10 @@
   }
 
   function playNote(context, destination, freq, time, duration, instrument, gainValue){
+    if(instrument.type === 'fmbell'){
+      playFMBell(context, destination, freq, time, duration, gainValue);
+      return;
+    }
     const osc = context.createOscillator();
     if(instrument.type === 'custom'){
       osc.setPeriodicWave(getPulseWave(context, instrument.duty));
@@ -555,6 +562,39 @@
     osc.connect(g).connect(destination);
     osc.start(time);
     osc.stop(time+duration+0.03);
+  }
+
+  // FM（调频）铃声音色：一个正弦载波被另一个正弦调制器调制，
+  // 调制指数随时间衰减，产生经典的"叮~"金属/铃铛质感，很适合当 8-bit 音效彩蛋音。
+  function playFMBell(context, destination, freq, time, duration, gainValue){
+    const carrier = context.createOscillator();
+    const modulator = context.createOscillator();
+    const modGain = context.createGain();
+    const outGain = context.createGain();
+
+    carrier.type = 'sine';
+    modulator.type = 'sine';
+    const modRatio = 3.01; // 非整数比例制造轻微不协和的"金属感"
+    modulator.frequency.setValueAtTime(freq*modRatio, time);
+    carrier.frequency.setValueAtTime(freq, time);
+
+    const modDepth = Math.max(freq*2.2, 40);
+    modGain.gain.setValueAtTime(modDepth, time);
+    modGain.gain.exponentialRampToValueAtTime(1, time+duration*1.3);
+
+    modulator.connect(modGain);
+    modGain.connect(carrier.frequency);
+
+    const tail = duration*1.6;
+    outGain.gain.setValueAtTime(0.0001, time);
+    outGain.gain.exponentialRampToValueAtTime(Math.max(gainValue,0.001), time+0.006);
+    outGain.gain.exponentialRampToValueAtTime(0.0001, time+tail);
+
+    carrier.connect(outGain).connect(destination);
+
+    const stopTime = time+tail+0.05;
+    modulator.start(time); carrier.start(time);
+    modulator.stop(stopTime); carrier.stop(stopTime);
   }
 
   function playKick(context, destination, time){
@@ -593,6 +633,61 @@
     noise.start(time); noise.stop(time+0.06);
   }
 
+  function playOpenHat(context, destination, time, noiseBuf){
+    const noise = context.createBufferSource();
+    noise.buffer = noiseBuf;
+    const hp = context.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = 7000;
+    const g = context.createGain();
+    g.gain.setValueAtTime(0.32, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time+0.28);
+    noise.connect(hp).connect(g).connect(destination);
+    noise.start(time); noise.stop(time+0.3);
+  }
+
+  function playCrash(context, destination, time, noiseBuf){
+    const noise = context.createBufferSource();
+    noise.buffer = noiseBuf;
+    const hp = context.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = 5000;
+    const bp = context.createBiquadFilter();
+    bp.type = 'highpass'; bp.frequency.value = 8000;
+    const g = context.createGain();
+    g.gain.setValueAtTime(0.4, time);
+    g.gain.exponentialRampToValueAtTime(0.0008, time+0.7);
+    noise.connect(hp).connect(bp).connect(g).connect(destination);
+    noise.start(time); noise.stop(time+0.75);
+  }
+
+  function playClap(context, destination, time, noiseBuf){
+    // 用三次极短的噪音爆发叠加模拟拍手声特有的"多重瞬态"质感
+    [0, 0.012, 0.024].forEach((offset, i)=>{
+      const noise = context.createBufferSource();
+      noise.buffer = noiseBuf;
+      const bp = context.createBiquadFilter();
+      bp.type = 'bandpass'; bp.frequency.value = 1500; bp.Q.value = 1.2;
+      const g = context.createGain();
+      const t = time+offset;
+      const peak = i===2 ? 0.55 : 0.35;
+      g.gain.setValueAtTime(peak, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t+0.1);
+      noise.connect(bp).connect(g).connect(destination);
+      noise.start(t); noise.stop(t+0.12);
+    });
+  }
+
+  function playTom(context, destination, time){
+    const osc = context.createOscillator();
+    const g = context.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(220, time);
+    osc.frequency.exponentialRampToValueAtTime(90, time+0.22);
+    g.gain.setValueAtTime(0.8, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time+0.26);
+    osc.connect(g).connect(destination);
+    osc.start(time); osc.stop(time+0.28);
+  }
+
   // ---------- 音阶 / 轨道数据 ----------
   const STEPS = 16;
 
@@ -604,9 +699,13 @@
     {midi:60,label:'C4'},{midi:57,label:'A3'},{midi:55,label:'G3'},{midi:52,label:'E3'},{midi:48,label:'C3'}
   ];
   const DRUM_ROWS = [
-    {label:'Hi-Hat', play:playHihat},
-    {label:'Snare',  play:playSnare},
-    {label:'Kick',   play:playKick}
+    {id:'crash',   label:'Crash',   play:playCrash},
+    {id:'openhat', label:'Open HH', play:playOpenHat},
+    {id:'hihat',   label:'Hi-Hat',  play:playHihat},
+    {id:'clap',    label:'Clap',    play:playClap},
+    {id:'snare',   label:'Snare',   play:playSnare},
+    {id:'tom',     label:'Tom',     play:playTom},
+    {id:'kick',    label:'Kick',    play:playKick}
   ];
 
   function makeGrid(rows){
@@ -707,14 +806,59 @@
     refreshTrackUI(document.getElementById('bassGrid'), BASS_ROWS, state.bass);
   }
 
+  // ---------- 预设节奏风格（拍子）----------
+  // 每种风格给出各鼓件在 16 步里的命中位置，用 DRUM_ROWS 里的 id 对应，
+  // 跟具体的行顺序无关，以后调整鼓机布局也不会影响这些预设。
+  const DRUM_STYLES = [
+    { id:'random',  name:'随机（惊喜）' },
+    { id:'rock',    name:'摇滚 Rock' },
+    { id:'disco',   name:'迪斯科 Disco' },
+    { id:'hiphop',  name:'说唱 Hip-Hop' },
+    { id:'reggae',  name:'雷鬼 Reggae' }
+  ];
+  const DRUM_STYLE_PATTERNS = {
+    rock:   { crash:[0], openhat:[], hihat:[0,2,4,6,8,10,12,14], clap:[], snare:[4,12], tom:[], kick:[0,6,8,14] },
+    disco:  { crash:[0], openhat:[2,6,10,14], hihat:[], clap:[4,12], snare:[4,12], tom:[], kick:[0,4,8,12] },
+    hiphop: { crash:[], openhat:[], hihat:[0,2,4,6,7,8,10,12,14,15], clap:[12], snare:[4,12], tom:[], kick:[0,3,8,11] },
+    reggae: { crash:[], openhat:[14], hihat:[2,6,10,14], clap:[], snare:[8], tom:[], kick:[8] }
+  };
+
+  function fillDrumStyleSelect(){
+    const sel = document.getElementById('drumStyle');
+    DRUM_STYLES.forEach(s=>{
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = s.name;
+      sel.appendChild(opt);
+    });
+  }
+  fillDrumStyleSelect();
+
   function aiDrum(){
-    const g = makeGrid(DRUM_ROWS); // 0 hihat, 1 snare, 2 kick
-    for(let c=0;c<STEPS;c++){
-      if(c%2===0) g[0][c] = true; // hihat 八分音符
-      if(c===0||c===8) g[2][c] = true; // kick
-      if(Math.random()<0.15) g[2][c] = true;
-      if(c===4||c===12) g[1][c] = true; // snare 反拍
+    const styleId = document.getElementById('drumStyle').value || 'random';
+    const g = makeGrid(DRUM_ROWS);
+
+    if(styleId === 'random'){
+      const idxOf = id => DRUM_ROWS.findIndex(r=>r.id===id);
+      const hihatRow = idxOf('hihat'), kickRow = idxOf('kick'), snareRow = idxOf('snare');
+      const openhatRow = idxOf('openhat'), clapRow = idxOf('clap'), crashRow = idxOf('crash');
+      for(let c=0;c<STEPS;c++){
+        if(c%2===0) g[hihatRow][c] = true;
+        if(c===0||c===8) g[kickRow][c] = true;
+        if(Math.random()<0.15) g[kickRow][c] = true;
+        if(c===4||c===12) g[snareRow][c] = true;
+        if(Math.random()<0.06) g[openhatRow][c] = true;
+        if(Math.random()<0.05) g[clapRow][c] = true;
+      }
+      g[crashRow][0] = true;
+    } else {
+      const pattern = DRUM_STYLE_PATTERNS[styleId];
+      DRUM_ROWS.forEach((row, r)=>{
+        const steps = pattern[row.id] || [];
+        steps.forEach(c=>{ g[r][c] = true; });
+      });
     }
+
     state.drum = g;
     refreshTrackUI(document.getElementById('drumGrid'), DRUM_ROWS, state.drum);
   }
@@ -729,11 +873,13 @@
   });
 
   document.getElementById('aiAllBtn').addEventListener('click', ()=>{
+    // 随机挑一种节奏风格和一组音色，增加"一键作曲"的惊喜感
+    const drumStyleSel = document.getElementById('drumStyle');
+    drumStyleSel.selectedIndex = Math.floor(Math.random()*drumStyleSel.options.length);
     aiMelody(); aiBass(); aiDrum();
-    // 随机换个音色组合，增加惊喜感
     const melSel = document.getElementById('melodyInstrument');
     const bassSel = document.getElementById('bassInstrument');
-    melSel.selectedIndex = Math.floor(Math.random()*3); // 前三种偏旋律感的音色
+    melSel.selectedIndex = Math.floor(Math.random()*4); // 前四种偏旋律感的音色
     bassSel.value = 'triangle';
   });
 
